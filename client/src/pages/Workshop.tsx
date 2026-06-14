@@ -9,6 +9,7 @@ import {
   Clock,
   Gauge,
   Star,
+  RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QUALITY_COLORS, QUALITY_LABELS, ERA_LABELS, formatNumber, calculateMasteryLevel, cn } from '../utils';
@@ -25,7 +26,7 @@ interface Fragment {
 }
 
 export default function Workshop() {
-  const { player } = useAuthStore();
+  const { player, fetchMe } = useAuthStore();
   const [fragments, setFragments] = useState<Fragment[]>([]);
   const [slots, setSlots] = useState<(Fragment | null)[]>([null, null, null, null]);
   const [selectedFragment, setSelectedFragment] = useState<Fragment | null>(null);
@@ -39,9 +40,13 @@ export default function Workshop() {
 
   const loadFragments = async () => {
     try {
-      const res = await api.get(`/players/${player?.id}`);
-      setFragments(res.data?.data?.fragments || []);
-    } catch {}
+      const res = await api.get('/players/me/inventory');
+      if (res.data?.success) {
+        setFragments(res.data.data.fragments || []);
+      }
+    } catch {
+      setFragments([]);
+    }
   };
 
   const availableFragments = fragments.filter(
@@ -108,11 +113,13 @@ export default function Workshop() {
         slot4: slots[3]?.id || null,
       };
       const res = await api.post('/crafting/craft', { recipe });
-      if (res.data.success) {
+      if (res.data?.success) {
         setCraftResult(res.data.data);
         setShowResult(true);
         setSlots([null, null, null, null]);
-        loadFragments();
+        await Promise.all([loadFragments(), fetchMe()]);
+      } else {
+        alert(res.data?.error || '合成失败');
       }
     } catch (error: any) {
       alert(error.response?.data?.error || '合成失败');

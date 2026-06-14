@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { WeeklyReport } from '../entities/WeeklyReport';
 import { Dungeon, DungeonSession } from '../entities/Dungeon';
@@ -286,6 +286,13 @@ export class ReportGenerator {
       doc.image(successCanvas.toBuffer(), 50, doc.y, { width: 490 });
       doc.moveDown(10);
 
+      doc.fontSize(16).text('💰 交易价格走势');
+      const priceTrendKey = Object.keys(report.priceTrends || {})[0] || 'fragment_rare';
+      const priceTrendData = report.priceTrends?.[priceTrendKey] || [];
+      const priceCanvas = this.generatePriceTrendCanvas(priceTrendData);
+      doc.image(priceCanvas.toBuffer(), 50, doc.y, { width: 490 });
+      doc.moveDown(10);
+
       doc.end();
 
       await new Promise(resolve => stream.on('finish', resolve));
@@ -422,6 +429,94 @@ export class ReportGenerator {
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
+
+    return canvas;
+  }
+
+  private generatePriceTrendCanvas(data: any[]): any {
+    const width = 500, height = 180;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
+
+    const padding = 40;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+
+    ctx.strokeStyle = '#4a5568';
+    ctx.beginPath();
+    ctx.moveTo(padding, padding);
+    ctx.lineTo(padding, height - padding);
+    ctx.lineTo(width - padding, height - padding);
+    ctx.stroke();
+
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#9ca3af';
+    ctx.textAlign = 'center';
+    ctx.fillText('近7日交易价格走势', width / 2, 18);
+
+    if (data.length > 0) {
+      const maxPrice = Math.max(...data.map(d => d.avgPrice || 0), 1);
+      const minPrice = Math.min(...data.map(d => d.avgPrice || maxPrice), 0);
+      const priceRange = maxPrice - minPrice || 1;
+
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      data.forEach((d, i) => {
+        const x = padding + (i / Math.max(data.length - 1, 1)) * chartWidth;
+        const normalizedPrice = (d.avgPrice - minPrice) / priceRange;
+        const y = height - padding - normalizedPrice * chartHeight;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      data.forEach((d, i) => {
+        const x = padding + (i / Math.max(data.length - 1, 1)) * chartWidth;
+        const normalizedPrice = (d.avgPrice - minPrice) / priceRange;
+        const y = height - padding - normalizedPrice * chartHeight;
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        const dateStr = (d.date || '').substring(5);
+        ctx.fillText(dateStr, x, height - 10);
+        if (i === data.length - 1 || i === 0 || i === Math.floor(data.length / 2)) {
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillText(`${Math.floor(d.avgPrice || 0)}`, x, y - 8);
+        }
+      });
+
+      ctx.strokeStyle = '#8b5cf6';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      const maxVolume = Math.max(...data.map(d => d.volume || 1), 1);
+      data.forEach((d, i) => {
+        const x = padding + (i / Math.max(data.length - 1, 1)) * chartWidth;
+        const y = height - padding - ((d.volume || 0) / maxVolume) * (chartHeight * 0.4);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(padding + 5, 25, 15, 3);
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('均价', padding + 25, 29);
+    ctx.fillStyle = '#8b5cf6';
+    ctx.fillRect(width / 2, 25, 15, 1);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('成交量', width / 2 + 20, 29);
 
     return canvas;
   }

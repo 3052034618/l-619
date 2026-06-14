@@ -24,7 +24,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { QUALITY_COLORS, QUALITY_LABELS, ERA_LABELS, formatNumber, cn } from '../utils';
-import { TradeItemType } from '../../server/src/entities/Trade';
+
+enum TradeItemType {
+  FRAGMENT = 'fragment',
+  SANDGLASS = 'sandglass',
+}
 
 interface TradeItem {
   id: string;

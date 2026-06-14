@@ -28,7 +28,7 @@ interface Sandglass {
 }
 
 export default function League() {
-  const { player } = useAuthStore();
+  const { player, fetchMe } = useAuthStore();
   const { matchState, joinMatch, leaveMatch } = useSocketStore();
   const [sandglasses, setSandglasses] = useState<Sandglass[]>([]);
   const [selectedSandglass, setSelectedSandglass] = useState<string | null>(null);
@@ -49,13 +49,17 @@ export default function League() {
 
   const loadData = async () => {
     try {
-      const [rankRes, historyRes] = await Promise.all([
+      const [rankRes, historyRes, invRes] = await Promise.all([
         api.get('/league/leaderboard?pageSize=10'),
         api.get('/league/history?pageSize=20'),
+        api.get('/players/me/inventory'),
       ]);
       setLeaderboard(rankRes.data?.data?.items || []);
       setMatchHistory(historyRes.data?.data?.items || []);
-    } catch {}
+      setSandglasses((invRes.data?.data?.sandglasses || []).filter((s: Sandglass) => s.remainingUses > 0 && !s.isListed));
+    } catch {
+      setSandglasses([]);
+    }
   };
 
   const joinQueue = async () => {

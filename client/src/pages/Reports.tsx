@@ -89,6 +89,8 @@ export default function Reports() {
 
   const heatmapData = selectedReport?.dungeonHeatmap || [];
   const craftData = selectedReport?.craftSuccessRates || [];
+  const priceTrendsData = selectedReport?.priceTrends || {};
+  const defaultPriceTrend = priceTrendsData['fragment_rare'] || priceTrendsData['sandglass_rare'] || [];
   const radarData = selectedReport?.temporalRadar
     ? [
         { subject: '时光掌控', A: selectedReport.temporalRadar.temporalControl || 0, fullMark: 100 },
@@ -244,6 +246,45 @@ export default function Reports() {
                       stroke="#10B981"
                       strokeWidth={3}
                       dot={{ fill: '#10B981', r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="card">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-yellow-400" />
+                交易价格走势 - 稀有碎片
+              </h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={defaultPriceTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="date" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" yAxisId="left" />
+                    <YAxis stroke="#9CA3AF" yAxisId="right" orientation="right" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
+                      labelStyle={{ color: '#fff' }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="avgPrice"
+                      name="均价(金币)"
+                      stroke="#F59E0B"
+                      strokeWidth={3}
+                      dot={{ fill: '#F59E0B', r: 5 }}
+                      yAxisId="left"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="volume"
+                      name="成交量"
+                      stroke="#8B5CF6"
+                      strokeWidth={2}
+                      yAxisId="right"
                     />
                   </LineChart>
                 </ResponsiveContainer>

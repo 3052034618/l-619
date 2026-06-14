@@ -4,6 +4,8 @@ import { LeagueMatch, MatchStatus, LeaguePlayer } from '../entities/LeagueMatch'
 import { LeagueRank, LeagueTier } from '../entities/LeagueRank';
 import { Player, PlayerStatus } from '../entities/Player';
 import { Sandglass } from '../entities/Sandglass';
+import { Fragment, FragmentQuality, FragmentEra } from '../entities/Fragment';
+import { PlayerInventory } from '../entities/PlayerInventory';
 import { logger } from '../utils/logger';
 import { generateId, randomInt, clamp } from '../utils';
 import { ServiceResult } from '../types';
@@ -32,6 +34,8 @@ export class LeagueManager {
   private rankRepo: Repository<LeagueRank>;
   private playerRepo: Repository<Player>;
   private sandglassRepo: Repository<Sandglass>;
+  private fragmentRepo: Repository<Fragment>;
+  private inventoryRepo: Repository<PlayerInventory>;
   private achievementService: AchievementService;
   private io: Server | null = null;
   private matchQueue: MatchQueueEntry[] = [];
@@ -45,6 +49,8 @@ export class LeagueManager {
     this.rankRepo = AppDataSource.getRepository(LeagueRank);
     this.playerRepo = AppDataSource.getRepository(Player);
     this.sandglassRepo = AppDataSource.getRepository(Sandglass);
+    this.fragmentRepo = AppDataSource.getRepository(Fragment);
+    this.inventoryRepo = AppDataSource.getRepository(PlayerInventory);
     this.achievementService = AchievementService.getInstance();
   }
 
@@ -422,17 +428,95 @@ export class LeagueManager {
         await this.sandglassRepo.save(winnerSandglass);
       }
 
+      const rewardFragments = await this.distributeMatchRewards(winnerId, winnerRank.tier);
+
       await this.achievementService.updateProgress(winnerId, 'LEAGUE_WIN', 1);
 
       if (this.io) {
-        this.io.to(`player:${winnerId}`).emit('league:match_result', { result: 'win', scoreChange: winnerChange });
-        this.io.to(`player:${loserId}`).emit('league:match_result', { result: 'lose', scoreChange: loserChange });
+        this.io.to(`player:${winnerId}`).emit('league:match_result', {
+          result: 'win',
+          scoreChange: winnerChange,
+          rewards: { fragments: rewardFragments },
+        });
+        this.io.to(`player:${loserId}`).emit('league:match_result', {
+          result: 'lose',
+          scoreChange: loserChange,
+          rewards: { fragments: [] },
+        });
       }
 
       this.activeMatches.delete(matchId);
     } catch (error) {
       logger.error('End match error:', error);
       this.activeMatches.delete(matchId);
+    }
+  }
+
+  private async distributeMatchRewards(winnerId: string, tier: LeagueTier): Promise<any[]> {
+    try {
+      const inventory = await this.inventoryRepo.findOne({ where: { playerId: winnerId } });
+      if (!inventory) return [];
+
+      const tierRewardMap: Record<string, { count: number; minQuality: FragmentQuality }> = {
+        [LeagueTier.BRONZE]: { count: 1, minQuality: FragmentQuality.COMMON },
+        [LeagueTier.SILVER]: { count: 1, minQuality: FragmentQuality.UNCOMMON },
+        [LeagueTier.GOLD]: { count: 2, minQuality: FragmentQuality.UNCOMMON },
+        [LeagueTier.PLATINUM]: { count: 2, minQuality: FragmentQuality.RARE },
+        [LeagueTier.DIAMOND]: { count: 3, minQuality: FragmentQuality.RARE },
+        [LeagueTier.MASTER]: { count: 3, minQuality: FragmentQuality.EPIC },
+        [LeagueTier.GRANDMASTER]: { count: 4, minQuality: FragmentQuality.EPIC },
+      };
+
+      const rewardConfig = tierRewardMap[tier] || tierRewardMap[LeagueTier.BRONZE];
+      const qualities: FragmentQuality[] = Object.values(FragmentQuality);
+      const eras: FragmentEra[] = Object.values(FragmentEra);
+      const minQualityIdx = qualities.indexOf(rewardConfig.minQuality);
+
+      const fragmentNames = ['时空残片', '时光碎屑', '命运沙粒', '永恒结晶', '星辰碎片', '虚空精华'];
+      const rewards: any[] = [];
+
+      for (let i = 0; i < rewardConfig.count; i++) {
+        const qualityIdx = Math.min(
+          qualities.length - 1,
+          minQualityIdx + Math.floor(Math.random() * 2)
+        );
+        const quality = qualities[qualityIdx];
+        const era = eras[Math.floor(Math.random() * eras.length)];
+        const qualityMultiplier: Record<string, number> = { common: 1, uncommon: 2, rare: 4, epic: 8, legendary: 16, mythical: 32 };
+
+        const fragment = this.fragmentRepo.create({
+          id: generateId(),
+          name: `${fragmentNames[Math.floor(Math.random() * fragmentNames.length)]}·${era}`,
+          description: `时光联赛胜利奖励`,
+          era,
+          quality,
+          slotPosition: (i % 4) + 1,
+          temporalEnergy: 20 + Math.floor(Math.random() * 30) * (qualityMultiplier[quality] || 1),
+          attributes: {
+            attack: Math.floor(Math.random() * 10 * (qualityMultiplier[quality] || 1)),
+            defense: Math.floor(Math.random() * 10 * (qualityMultiplier[quality] || 1)),
+            speed: Math.floor(Math.random() * 5 * (qualityMultiplier[quality] || 1)),
+            hp: Math.floor(Math.random() * 50 * (qualityMultiplier[quality] || 1)),
+          },
+          inventoryId: inventory.id,
+          isListed: false,
+          suggestedPrice: 100 * (qualityMultiplier[quality] || 1),
+        });
+
+        const saved = await this.fragmentRepo.save(fragment);
+        rewards.push({
+          id: saved.id,
+          name: saved.name,
+          quality: saved.quality,
+          era: saved.era,
+          temporalEnergy: saved.temporalEnergy,
+        });
+      }
+
+      return rewards;
+    } catch (error) {
+      logger.error('Distribute match rewards error:', error);
+      return [];
     }
   }
 

@@ -16,6 +16,7 @@ export enum FragmentQuality {
   RARE = 'rare',
   EPIC = 'epic',
   LEGENDARY = 'legendary',
+  MYTHICAL = 'mythical',
 }
 
 @Entity('fragments')
