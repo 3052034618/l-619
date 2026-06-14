@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #8b5cf6 #1a1030;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #1a1030;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #8b5cf6;
+  border-radius: 4px;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-time-600 to-time-500 hover:from-time-500 hover:to-time-400 text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-time-500/25 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-dark-600 hover:bg-dark-500 text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200 border border-time-500/30 hover:border-time-500;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-dark-800/80 backdrop-blur-sm border border-time-500/20 rounded-xl p-6 shadow-xl;
+  }
+
+  .input {
+    @apply w-full bg-dark-700 border border-time-500/30 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-time-500 focus:ring-1 focus:ring-time-500 transition-all;
+  }
+
+  .quality-common { @apply text-gray-400 border-gray-400; }
+  .quality-uncommon { @apply text-green-400 border-green-400; }
+  .quality-rare { @apply text-blue-400 border-blue-400; }
+  .quality-epic { @apply text-purple-400 border-purple-400; }
+  .quality-legendary { @apply text-yellow-400 border-yellow-400; }
+  .quality-mythical { @apply text-red-400 border-red-400; }
+
+  .quality-bg-common { @apply bg-gray-400/10; }
+  .quality-bg-uncommon { @apply bg-green-400/10; }
+  .quality-bg-rare { @apply bg-blue-400/10; }
+  .quality-bg-epic { @apply bg-purple-400/10; }
+  .quality-bg-legendary { @apply bg-yellow-400/10; }
+  .quality-bg-mythical { @apply bg-red-400/10; }
+}
