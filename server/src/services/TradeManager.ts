@@ -1,6 +1,7 @@
 import { Repository, Between } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { Trade, TradeStatus, TradeItemType } from '../entities/Trade';
+import { TradeWatchlist } from '../entities/TradeWatchlist';
 import { Player } from '../entities/Player';
 import { Fragment } from '../entities/Fragment';
 import { Sandglass } from '../entities/Sandglass';
@@ -16,6 +17,7 @@ import { AchievementService } from './AchievementService';
 export class TradeManager {
   private static instance: TradeManager;
   private tradeRepo: Repository<Trade>;
+  private watchlistRepo: Repository<TradeWatchlist>;
   private playerRepo: Repository<Player>;
   private fragmentRepo: Repository<Fragment>;
   private sandglassRepo: Repository<Sandglass>;
@@ -27,6 +29,7 @@ export class TradeManager {
 
   private constructor() {
     this.tradeRepo = AppDataSource.getRepository(Trade);
+    this.watchlistRepo = AppDataSource.getRepository(TradeWatchlist);
     this.playerRepo = AppDataSource.getRepository(Player);
     this.fragmentRepo = AppDataSource.getRepository(Fragment);
     this.sandglassRepo = AppDataSource.getRepository(Sandglass);
@@ -88,6 +91,7 @@ export class TradeManager {
         });
         if (!item) return { success: false, error: '沙漏不存在或不属于你', code: 'ITEM_NOT_FOUND' };
         if (item.isListed) return { success: false, error: '该沙漏已在出售中', code: 'ALREADY_LISTED' };
+        if (item.isLocked) return { success: false, error: '该沙漏已被锁定，不能上架', code: 'LOCKED_ITEM' };
         itemName = item.name;
         itemEra = (item.fragmentDetails as any)?.[0]?.era || 'unknown';
         itemQuality = item.rarity;
@@ -204,6 +208,7 @@ export class TradeManager {
 
       await this.recordTradePrice(trade);
       await this.triggerTimeRipple(trade);
+      await this.checkPriceAlerts(trade);
       await this.achievementService.updateProgress(buyerId, 'TRADE_BUY', 1);
       await this.achievementService.updateProgress(trade.sellerId, 'TRADE_SELL', 1);
 
@@ -388,25 +393,196 @@ export class TradeManager {
 
   async getPriceTrend(itemType: TradeItemType, quality: string, era: string, days: number = 7): Promise<ServiceResult<any[]>> {
     try {
-      const trend: any[] = [];
+      const eras = era && era !== 'all' ? [era] : ['ancient', 'medieval', 'renaissance', 'modern', 'future'];
+      const dailyData: Record<string, { total: number; count: number; volume: number }> = {};
+
       for (let i = days - 1; i >= 0; i--) {
         const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const key = `price:history:${itemType}:${quality}:${era}:${date}`;
-        const data = await redisClient.hgetall(key);
-        if (data && data.total && data.count) {
-          trend.push({
-            date,
-            avgPrice: Math.floor(Number(data.total) / Number(data.count)),
-            volume: Number(data.count),
-          });
-        } else {
-          trend.push({ date, avgPrice: 0, volume: 0 });
+        dailyData[date] = { total: 0, count: 0, volume: 0 };
+      }
+
+      for (const e of eras) {
+        for (let i = days - 1; i >= 0; i--) {
+          const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const key = `price:history:${itemType}:${quality}:${e}:${date}`;
+          const data = await redisClient.hgetall(key);
+          if (data && data.total && data.count) {
+            dailyData[date].total += Number(data.total);
+            dailyData[date].count += Number(data.count);
+            dailyData[date].volume += Number(data.count);
+          }
         }
       }
+
+      const trend: any[] = [];
+      for (const date of Object.keys(dailyData)) {
+        const d = dailyData[date];
+        if (d.count > 0) {
+          trend.push({
+            date,
+            avgPrice: Math.floor(d.total / d.count),
+            volume: d.volume,
+          });
+        } else {
+          const basePrice = this.getBasePrice(itemType, quality);
+          trend.push({
+            date,
+            avgPrice: 0,
+            volume: 0,
+            referencePrice: basePrice,
+          });
+        }
+      }
+
       return { success: true, data: trend };
     } catch (error) {
       logger.error('Get price trend error:', error);
       return { success: false, error: '获取价格走势失败' };
     }
   }
-}
+
+  async addToWatchlist(
+    playerId: string,
+    itemType: 'fragment' | 'sandglass',
+    quality: string,
+    era: string = 'all',
+    targetPrice: number,
+    itemName?: string
+  ): Promise<ServiceResult<TradeWatchlist>> {
+    try {
+      const existing = await this.watchlistRepo.findOne({
+        where: { playerId, itemType, itemQuality: quality, itemEra: era },
+      });
+      if (existing) {
+        existing.targetPrice = targetPrice;
+        existing.notifyEnabled = true;
+        if (itemName) existing.itemName = itemName;
+        const saved = await this.watchlistRepo.save(existing);
+        return { success: true, data: saved };
+      }
+
+      const watch = this.watchlistRepo.create({
+        id: generateId(),
+        playerId,
+        itemType,
+        itemQuality: quality,
+        itemEra: era,
+        targetPrice,
+        itemName,
+        notifyEnabled: true,
+      });
+      const saved = await this.watchlistRepo.save(watch);
+      return { success: true, data: saved };
+    } catch (error) {
+      logger.error('Add to watchlist error:', error);
+      return { success: false, error: '添加关注失败' };
+    }
+  }
+
+  async removeFromWatchlist(playerId: string, watchId: string): Promise<ServiceResult> {
+    try {
+      const watch = await this.watchlistRepo.findOne({ where: { id: watchId, playerId } });
+      if (!watch) return { success: false, error: '关注不存在' };
+      await this.watchlistRepo.remove(watch);
+      return { success: true };
+    } catch (error) {
+      logger.error('Remove from watchlist error:', error);
+      return { success: false, error: '取消关注失败' };
+    }
+  }
+
+  async getWatchlist(playerId: string): Promise<ServiceResult<any[]>> {
+    try {
+      const watches = await this.watchlistRepo.find({
+        where: { playerId },
+        order: { createdAt: 'DESC' },
+      });
+
+      const result = await Promise.all(
+        watches.map(async (w) => {
+          const [avgPrice, lowestPrice] = await Promise.all([
+            this.getAvg7dPrice(w.itemType as TradeItemType, w.itemQuality, w.itemEra),
+            this.getLowestListingPrice(w.itemType as TradeItemType, w.itemQuality, w.itemEra),
+          ]);
+          return {
+            ...w,
+            avg7dPrice: avgPrice,
+            currentLowestPrice: lowestPrice,
+            isBelowTarget: lowestPrice > 0 && lowestPrice <= w.targetPrice,
+          };
+        })
+      );
+
+      return { success: true, data: result };
+    } catch (error) {
+      logger.error('Get watchlist error:', error);
+      return { success: false, error: '获取关注列表失败' };
+    }
+  }
+
+  async updateWatchTarget(playerId: string, watchId: string, targetPrice: number): Promise<ServiceResult> {
+    try {
+      const watch = await this.watchlistRepo.findOne({ where: { id: watchId, playerId } });
+      if (!watch) return { success: false, error: '关注不存在' };
+      watch.targetPrice = targetPrice;
+      await this.watchlistRepo.save(watch);
+      return { success: true };
+    } catch (error) {
+      logger.error('Update watch target error:', error);
+      return { success: false, error: '更新目标价失败' };
+    }
+  }
+
+  private async getLowestListingPrice(itemType: TradeItemType, quality: string, era: string): Promise<number> {
+    try {
+      const query = this.tradeRepo.createQueryBuilder('t')
+        .where('t.status = :status', { status: TradeStatus.LISTED })
+        .andWhere('t.itemType = :itemType', { itemType })
+        .andWhere('t.itemQuality = :quality', { quality });
+      if (era && era !== 'all') {
+        query.andWhere('t.itemEra = :era', { era });
+      }
+      query.orderBy('t.price', 'ASC').limit(1);
+      const trade = await query.getOne();
+      return trade ? Number(trade.price) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  async checkPriceAlerts(trade: Trade): Promise<void> {
+    try {
+      const watches = await this.watchlistRepo.find({
+        where: {
+          itemType: trade.itemType as any,
+          itemQuality: trade.itemQuality,
+          notifyEnabled: true,
+        },
+      });
+
+      for (const watch of watches) {
+        if (watch.itemEra !== 'all' && watch.itemEra !== trade.itemEra) continue;
+        if (watch.lastNotifiedPrice === trade.price) continue;
+        if (trade.price > watch.targetPrice) continue;
+
+        watch.lastNotifiedPrice = trade.price;
+        await this.watchlistRepo.save(watch);
+
+        if (this.io) {
+          this.io.to(`player:${watch.playerId}`).emit('trade:price_alert', {
+            watchId: watch.id,
+            itemType: watch.itemType,
+            itemQuality: watch.itemQuality,
+            itemEra: watch.itemEra,
+            itemName: watch.itemName || `${watch.itemType === 'fragment' ? '碎片' : '沙漏'}`,
+            targetPrice: watch.targetPrice,
+            currentPrice: trade.price,
+            tradeId: trade.id,
+            sellerName: trade.sellerName,
+          });
+        }
+      }
+    } catch (error) {
+      logger.error('Check price alerts error:', error);
+    }
+  }

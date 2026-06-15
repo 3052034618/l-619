@@ -12,6 +12,13 @@ import {
   X,
   TrendingUp,
   Sparkles,
+  Bell,
+  BellOff,
+  Star,
+  Target,
+  Edit3,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,6 +30,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from 'recharts';
 import { QUALITY_COLORS, QUALITY_LABELS, ERA_LABELS, formatNumber, cn } from '../utils';
 
@@ -47,9 +55,24 @@ interface TradeItem {
   createdAt: string;
 }
 
+interface WatchItem {
+  id: string;
+  itemType: string;
+  itemQuality: string;
+  itemEra: string;
+  itemName?: string;
+  targetPrice: number;
+  avg7dPrice: number;
+  currentLowestPrice: number;
+  isBelowTarget: boolean;
+  notifyEnabled: boolean;
+  createdAt: string;
+}
+
 export default function Trade() {
   const { player } = useAuthStore();
   const [trades, setTrades] = useState<TradeItem[]>([]);
+  const [watchlist, setWatchlist] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     itemType: 'all',
@@ -70,19 +93,104 @@ export default function Trade() {
   const [trendFilters, setTrendFilters] = useState({
     itemType: 'fragment',
     quality: 'rare',
+    era: 'all',
   });
-  const [activeTab, setActiveTab] = useState<'market' | 'my' | 'trend'>('market');
+  const [activeTab, setActiveTab] = useState<'market' | 'my' | 'trend' | 'watch'>('market');
   const [myItems, setMyItems] = useState<any[]>([]);
+  const [showWatchModal, setShowWatchModal] = useState(false);
+  const [watchTarget, setWatchTarget] = useState<any>(null);
+  const [targetPriceInput, setTargetPriceInput] = useState('');
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
 
   useEffect(() => {
     loadTrades();
+    if (activeTab === 'watch') {
+      loadWatchlist();
+    }
   }, [filters, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'watch') {
+      loadWatchlist();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'trend') {
       loadPriceTrend();
     }
   }, [trendFilters, activeTab]);
+
+  const loadWatchlist = async () => {
+    setWatchlistLoading(true);
+    try {
+      const res = await api.get('/trades/watchlist');
+      if (res.data?.success) {
+        setWatchlist(res.data.data || []);
+      }
+    } finally {
+      setWatchlistLoading(false);
+    }
+  };
+
+  const openWatchModal = (trade?: any, isEdit: boolean = false) => {
+    if (isEdit) {
+      setWatchTarget(trade);
+      setTargetPriceInput(String(trade.targetPrice || ''));
+    } else {
+      setWatchTarget(trade);
+      const basePrice = trade.suggestedPrice || 100;
+      setTargetPriceInput(String(Math.floor(basePrice * 0.8)));
+    }
+    setShowWatchModal(true);
+  };
+
+  const handleAddWatch = async () => {
+    if (!watchTarget || !targetPriceInput) return;
+    try {
+      const res = await api.post('/trades/watchlist', {
+        itemType: watchTarget.itemType,
+        quality: watchTarget.itemQuality,
+        era: watchTarget.itemEra || 'all',
+        targetPrice: Number(targetPriceInput),
+        itemName: watchTarget.itemName,
+      });
+      if (res.data?.success) {
+        alert('关注成功！价格低于目标价时会通知您');
+        setShowWatchModal(false);
+        if (activeTab === 'watch') loadWatchlist();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || '关注失败');
+    }
+  };
+
+  const handleUpdateWatch = async () => {
+    if (!watchTarget?.id || !targetPriceInput) return;
+    try {
+      const res = await api.put(`/trades/watchlist/${watchTarget.id}`, {
+        targetPrice: Number(targetPriceInput),
+      });
+      if (res.data?.success) {
+        alert('目标价已更新');
+        setShowWatchModal(false);
+        loadWatchlist();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || '更新失败');
+    }
+  };
+
+  const handleRemoveWatch = async (watchId: string) => {
+    if (!confirm('确定取消关注？')) return;
+    try {
+      await api.delete(`/trades/watchlist/${watchId}?v1');
+      alert('已取消关注');
+      loadWatchlist();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '取消失败');
+    }
+  };
 
   const loadPriceTrend = async () => {
     try {
@@ -202,21 +310,22 @@ export default function Trade() {
         </button>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        {(['market', 'my', 'trend'] as const).map((tab) => (
+      <div className="flex gap-4 mb-6 flex-wrap">
+        {(['market', 'my', 'trend', 'watch'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              'px-6 py-2 rounded-lg font-medium transition-all',
+              'px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2',
               activeTab === tab
                 ? 'bg-time-600 text-white'
                 : 'bg-dark-700 text-gray-400 hover:text-white'
             )}
           >
-            {tab === 'market' && '🛒 市场'}
-            {tab === 'my' && '📦 我的上架'}
-            {tab === 'trend' && '📈 价格走势'}
+            {tab === 'market' && <><ShoppingBag className="w-4 h-4" /> 市场</>}
+            {tab === 'my' && <><Tag className="w-4 h-4" /> 我的上架</>}
+            {tab === 'trend' && <><TrendingUp className="w-4 h-4" /> 价格走势</>}
+            {tab === 'watch' && <><Bell className="w-4 h-4" /> 关注清单</>}
           </button>
         ))}
       </div>
@@ -246,10 +355,25 @@ export default function Trade() {
                   <option key={q} value={q}>{QUALITY_LABELS[q]}</option>
                 ))}
               </select>
+              <select
+                value={trendFilters.era}
+                onChange={(e) => setTrendFilters({ ...trendFilters, era: e.target.value })}
+                className="input w-28"
+              >
+                <option value="all">全部时代</option>
+                {['ancient', 'medieval', 'renaissance', 'modern', 'future'].map((e) => (
+                  <option key={e} value={e}>{ERA_LABELS[e]}</option>
+                ))}
+              </select>
             </div>
           </div>
-          <div className="text-sm text-gray-400 mb-3">
-            当前：{trendFilters.itemType === 'fragment' ? '碎片' : '沙漏'} · {QUALITY_LABELS[trendFilters.quality]}
+          <div className="text-sm text-gray-400 mb-3 flex items-center gap-4">
+            <span>当前：{trendFilters.itemType === 'fragment' ? '碎片' : '沙漏'} · {QUALITY_LABELS[trendFilters.quality]} · {trendFilters.era === 'all' ? '全部时代' : ERA_LABELS[trendFilters.era]}</span>
+            {priceTrend.some((d: any) => d.avgPrice === 0 && d.volume === 0) && (
+              <span className="text-yellow-400 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" /> 部分日期无成交，显示参考价
+              </span>
+            )}
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -273,7 +397,8 @@ export default function Trade() {
                   contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
                   labelStyle={{ color: '#fff' }}
                   formatter={(value: any, name: string) => {
-                    if (name === 'avgPrice') return [formatNumber(Number(value)), '均价'];
+                    if (name === 'avgPrice') return [value > 0 ? formatNumber(Number(value)) : '无成交', '均价'];
+                    if (name === 'referencePrice') return [formatNumber(Number(value)), '参考价'];
                     if (name === 'volume') return [value, '成交量'];
                     return [value, name];
                   }}
@@ -281,6 +406,7 @@ export default function Trade() {
                 <Legend
                   formatter={(value: string) => {
                     if (value === 'avgPrice') return '均价';
+                    if (value === 'referencePrice') return '参考价';
                     if (value === 'volume') return '成交量';
                     return value;
                   }}
@@ -294,6 +420,17 @@ export default function Trade() {
                   dot={{ fill: '#F59E0B', r: 4 }}
                   activeDot={{ r: 6 }}
                   name="avgPrice"
+                  connectNulls
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="referencePrice"
+                  stroke="#9CA3AF"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  dot={false}
+                  name="referencePrice"
                 />
                 <Line
                   yAxisId="right"
@@ -308,6 +445,101 @@ export default function Trade() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      ) : activeTab === 'watch' ? (
+        <div className="card">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-yellow-400" />
+            我的关注清单
+          </h3>
+          {watchlistLoading ? (
+            <p className="text-gray-400 text-center py-8">加载中...</p>
+          ) : watchlist.length === 0 ? (
+            <div className="text-center py-12">
+              <BellOff className="w-12 h-12 text-gray-500 mx-auto mb-3" />
+              <p className="text-gray-400">暂无关注物品</p>
+              <p className="text-gray-500 text-sm mt-1">点击商品卡片的铃铛图标即可关注，价格低于目标价时会收到提醒</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {watchlist.map((item) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn(
+                    'p-4 rounded-xl border transition-all',
+                    item.isBelowTarget
+                      ? 'bg-green-500/10 border-green-500/30'
+                      : 'bg-dark-700/50 border-dark-600 hover:bg-dark-700'
+                  )}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={cn(
+                          'px-2 py-0.5 rounded text-xs font-semibold quality-' + item.itemQuality,
+                          'quality-bg-' + item.itemQuality
+                        )}>
+                          {QUALITY_LABELS[item.itemQuality as keyof typeof QUALITY_LABELS]}
+                        </span>
+                        <span className="text-sm text-gray-400">
+                          {item.itemType === 'fragment' ? '碎片' : '沙漏'}
+                          {item.itemEra !== 'all' && ` · ${ERA_LABELS[item.itemEra as keyof typeof ERA_LABELS]}`}
+                        </span>
+                        {item.isBelowTarget && (
+                          <span className="text-green-400 text-xs font-semibold flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> 低于目标价
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-semibold truncate">
+                        {item.itemName || `${item.itemType === 'fragment' ? '碎片' : '沙漏'} · ${QUALITY_LABELS[item.itemQuality as keyof typeof QUALITY_LABELS]}`}
+                      </p>
+                      <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
+                        <div>
+                          <p className="text-gray-400 text-xs">7日均价</p>
+                          <p className="text-time-300 font-bold">{item.avg7dPrice > 0 ? formatNumber(item.avg7dPrice) : '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs">当前最低</p>
+                          <p className={cn(
+                            'font-bold',
+                            item.isBelowTarget ? 'text-green-400' : 'text-yellow-400'
+                          )}>
+                            {item.currentLowestPrice > 0 ? formatNumber(item.currentLowestPrice) : '暂无'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs">目标价</p>
+                          <p className="text-purple-400 font-bold flex items-center gap-1">
+                            <Target className="w-3 h-3" />
+                            {formatNumber(item.targetPrice)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 ml-4">
+                      <button
+                        onClick={() => openWatchModal(item, true)}
+                        className="p-2 rounded-lg bg-dark-600 hover:bg-dark-500 text-gray-400 hover:text-blue-400 transition-all"
+                        title="修改目标价"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveWatch(item.id)}
+                        className="p-2 rounded-lg bg-dark-600 hover:bg-dark-500 text-gray-400 hover:text-red-400 transition-all"
+                        title="取消关注"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -442,15 +674,24 @@ export default function Trade() {
                         <Coins className="w-5 h-5 text-yellow-400" />
                         <span className="text-2xl font-bold text-yellow-400">{formatNumber(trade.price)}</span>
                       </div>
-                      {isMyItem ? (
-                        <button onClick={() => handleCancel(trade.id)} className="btn-danger text-sm py-1.5 px-4">
-                          <X className="w-4 h-4 mr-1 inline" /> 取消
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openWatchModal(trade); }}
+                          className="p-2 rounded-lg bg-dark-600 hover:bg-dark-500 text-gray-400 hover:text-yellow-400 transition-all"
+                          title="关注"
+                        >
+                          <Bell className="w-4 h-4" />
                         </button>
-                      ) : (
-                        <button onClick={() => handleBuy(trade.id)} className="btn-primary text-sm py-1.5 px-4">
-                          <Check className="w-4 h-4 mr-1 inline" /> 购买
-                        </button>
-                      )}
+                        {isMyItem ? (
+                          <button onClick={() => handleCancel(trade.id)} className="btn-danger text-sm py-1.5 px-4">
+                            <X className="w-4 h-4 mr-1 inline" /> 取消
+                          </button>
+                        ) : (
+                          <button onClick={() => handleBuy(trade.id)} className="btn-primary text-sm py-1.5 px-4">
+                            <Check className="w-4 h-4 mr-1 inline" /> 购买
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </motion.div>
                 );
@@ -486,8 +727,8 @@ export default function Trade() {
                   <label className="block text-sm text-gray-400 mb-2">物品类型</label>
                   <select
                     value={listForm.itemType}
-                    onChange={(e) => setListForm({ ...listForm, itemType: e.target.value as TradeItemType })}
-                    className="input"
+                    onChange={(e) => setListForm({ ...listForm, itemType: e.target.value as TradeItemType, itemId: '' })}
+                    className="input w-full"
                   >
                     <option value={TradeItemType.FRAGMENT}>碎片</option>
                     <option value={TradeItemType.SANDGLASS}>沙漏</option>
@@ -495,14 +736,14 @@ export default function Trade() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">物品ID</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm text-gray-400 mb-2">选择物品</label>
+                  <select
                     value={listForm.itemId}
                     onChange={(e) => setListForm({ ...listForm, itemId: e.target.value })}
-                    className="input"
-                    placeholder="请输入物品ID"
-                  />
+                    className="input w-full"
+                  >
+                    <option value="">请选择物品</option>
+                  </select>
                 </div>
 
                 <div>
@@ -530,6 +771,84 @@ export default function Trade() {
                   确认上架
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showWatchModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowWatchModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="card w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-yellow-400" />
+                {watchTarget?.id ? '修改目标价' : '设置关注'}
+              </h3>
+
+              {watchTarget && (
+                <div className="space-y-4">
+                  <div className="bg-dark-700/50 rounded-lg p-3">
+                    <p className="font-semibold">
+                      {watchTarget.itemName || `${watchTarget.itemType === 'fragment' ? '碎片' : '沙漏'} · ${QUALITY_LABELS[watchTarget.itemQuality as keyof typeof QUALITY_LABELS]}`}
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {watchTarget.itemType === 'fragment' ? '碎片' : '沙漏'}
+                      {' · '}
+                      {QUALITY_LABELS[watchTarget.itemQuality as keyof typeof QUALITY_LABELS]}
+                      {watchTarget.itemEra && watchTarget.itemEra !== 'all' && ` · ${ERA_LABELS[watchTarget.itemEra as keyof typeof ERA_LABELS]}`}
+                    </p>
+                    {watchTarget.currentLowestPrice > 0 && (
+                      <p className="text-sm mt-2">
+                        当前最低价：<span className="text-yellow-400 font-bold">{formatNumber(watchTarget.currentLowestPrice)}</span> 金币
+                      </p>
+                    )}
+                    {watchTarget.avg7dPrice > 0 && (
+                      <p className="text-sm">
+                        7日均价：<span className="text-time-400 font-bold">{formatNumber(watchTarget.avg7dPrice)}</span> 金币
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2 flex items-center gap-2">
+                      <Target className="w-4 h-4" />
+                      目标提醒价 (金币)
+                    </label>
+                    <input
+                      type="number"
+                      value={targetPriceInput}
+                      onChange={(e) => setTargetPriceInput(e.target.value)}
+                      className="input"
+                      placeholder="低于此价格时提醒我"
+                      min={1}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">当该品质物品有玩家以低于或等于此价格出售时，您会收到通知</p>
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button onClick={() => setShowWatchModal(false)} className="btn-secondary flex-1">
+                      取消
+                    </button>
+                    <button
+                      onClick={watchTarget?.id ? handleUpdateWatch : handleAddWatch}
+                      className="btn-primary flex-1"
+                      disabled={!targetPriceInput || Number(targetPriceInput) <= 0}
+                    >
+                      {watchTarget?.id ? '保存修改' : '添加关注'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

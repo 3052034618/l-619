@@ -96,6 +96,12 @@ export class Sandglass {
   @Column({ type: 'boolean', default: false })
   isListed: boolean;
 
+  @Column({ type: 'boolean', default: false, comment: '是否收藏，收藏的沙漏排在前面' })
+  isFavorite: boolean;
+
+  @Column({ type: 'boolean', default: false, comment: '是否锁定，锁定后不能上架或消耗' })
+  isLocked: boolean;
+
   @Column({ type: 'bigint', default: 0, comment: '出售价格' })
   listedPrice: number;
 

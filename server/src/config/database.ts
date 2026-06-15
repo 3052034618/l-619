@@ -10,6 +10,7 @@ import { Guild } from '../entities/Guild';
 import { GuildMember } from '../entities/GuildMember';
 import { GuildBuilding } from '../entities/GuildBuilding';
 import { Trade } from '../entities/Trade';
+import { TradeWatchlist } from '../entities/TradeWatchlist';
 import { LeagueMatch } from '../entities/LeagueMatch';
 import { LeagueRank } from '../entities/LeagueRank';
 import { WeeklyReport } from '../entities/WeeklyReport';
@@ -27,7 +28,7 @@ export const AppDataSource = new DataSource({
   logging: process.env.NODE_ENV !== 'production',
   entities: [
     Player, Sandglass, Fragment, Dungeon, DungeonSession,
-    Guild, GuildMember, GuildBuilding, Trade, LeagueMatch,
+    Guild, GuildMember, GuildBuilding, Trade, TradeWatchlist, LeagueMatch,
     LeagueRank, WeeklyReport, Achievement, PlayerAchievement, PlayerInventory,
   ],
   subscribers: [],

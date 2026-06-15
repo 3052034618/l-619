@@ -45,12 +45,51 @@ router.get('/suggested-price', authMiddleware, async (req: AuthRequest, res: Res
 });
 
 router.get('/price-trend', authMiddleware, async (req: AuthRequest, res: Response) => {
-  const { itemType, quality, era, days = 7 } = req.query;
+  const { itemType, quality, era = 'all', days = 7 } = req.query;
   const result = await tradeManager.getPriceTrend(
     itemType as TradeItemType,
     quality as string,
     era as string,
     Number(days)
+  );
+  res.status(result.success ? 200 : 500).json(result);
+});
+
+router.get('/watchlist', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const result = await tradeManager.getWatchlist(req.playerId!);
+  res.status(result.success ? 200 : 500).json(result);
+});
+
+router.post('/watchlist', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { itemType, quality, era = 'all', targetPrice, itemName } = req.body;
+  if (!itemType || !quality || targetPrice === undefined) {
+    return res.status(400).json({ success: false, error: '缺少必要参数' });
+  }
+  const result = await tradeManager.addToWatchlist(
+    req.playerId!,
+    itemType as 'fragment' | 'sandglass',
+    quality as string,
+    era as string,
+    Number(targetPrice),
+    itemName as string
+  );
+  res.status(result.success ? 200 : 500).json(result);
+});
+
+router.delete('/watchlist/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const result = await tradeManager.removeFromWatchlist(req.playerId!, req.params.id);
+  res.status(result.success ? 200 : 500).json(result);
+});
+
+router.put('/watchlist/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { targetPrice } = req.body;
+  if (targetPrice === undefined) {
+    return res.status(400).json({ success: false, error: '缺少 targetPrice 参数' });
+  }
+  const result = await tradeManager.updateWatchTarget(
+    req.playerId!,
+    req.params.id,
+    Number(targetPrice)
   );
   res.status(result.success ? 200 : 500).json(result);
 });

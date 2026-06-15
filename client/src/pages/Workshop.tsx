@@ -11,6 +11,8 @@ import {
   Star,
   Hourglass,
   Layers,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QUALITY_COLORS, QUALITY_LABELS, ERA_LABELS, formatNumber, calculateMasteryLevel, cn } from '../utils';
@@ -37,6 +39,8 @@ interface Sandglass {
   affixes: any[];
   collectionValue: number;
   isListed: boolean;
+  isFavorite: boolean;
+  isLocked: boolean;
 }
 
 export default function Workshop() {
@@ -146,6 +150,50 @@ export default function Workshop() {
       alert(error.response?.data?.error || '合成失败');
     } finally {
       setIsCrafting(false);
+    }
+  };
+
+  const toggleFavorite = async (sandglassId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const res = await api.post(`/players/me/sandglasses/${sandglassId}/favorite`);
+      if (res.data?.success) {
+        setSandglasses((prev) =>
+          prev.map((s) =>
+            s.id === sandglassId ? { ...s, isFavorite: res.data.data.isFavorite } : s
+          )
+        );
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || '操作失败');
+    }
+  };
+
+  const toggleLock = async (sandglassId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const res = await api.post(`/players/me/sandglasses/${sandglassId}/lock`);
+      if (res.data?.success) {
+        setSandglasses((prev) =>
+          prev.map((s) =>
+            s.id === sandglassId ? { ...s, isLocked: res.data.data.isLocked } : s
+          )
+        );
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || '操作失败');
+    }
+  };
+
+  const favoriteNewSandglass = async () => {
+    if (!craftResult?.sandglassId) return;
+    try {
+      await api.post(`/players/me/sandglasses/${craftResult.sandglassId}/favorite`);
+      setCraftResult({ ...craftResult, isFavorite: true });
+      await loadInventory();
+      alert('已收藏！');
+    } catch (err: any) {
+      alert(err.response?.data?.error || '收藏失败');
     }
   };
 
@@ -337,11 +385,42 @@ export default function Workshop() {
                         <div className="min-w-0 flex-1">
                           <p className="font-bold truncate" style={{ color: QUALITY_COLORS[s.rarity] }}>
                             {s.name}
+                            {s.isFavorite && <Star className="w-4 h-4 inline ml-1 text-yellow-400 fill-yellow-400" />}
+                            {s.isLocked && <Lock className="w-4 h-4 inline ml-1 text-red-400" />}
                           </p>
                           <p className="text-xs text-gray-400">{QUALITY_LABELS[s.rarity]}</p>
                         </div>
-                        <Hourglass className="w-5 h-5 flex-shrink-0 ml-2" style={{ color: QUALITY_COLORS[s.rarity] }} />
+                        <div className="flex items-center gap-1 ml-2">
+                          <button
+                            onClick={(e) => toggleFavorite(s.id, e)}
+                            className={cn(
+                              'p-1.5 rounded-lg transition-all',
+                              s.isFavorite
+                                ? 'text-yellow-400 bg-yellow-500/20'
+                                : 'text-gray-500 hover:text-yellow-400 hover:bg-dark-600'
+                            )}
+                            title={s.isFavorite ? '取消收藏' : '收藏'}
+                          >
+                            <Star className="w-4 h-4" fill={s.isFavorite ? 'currentColor' : 'none'} />
+                          </button>
+                          <button
+                            onClick={(e) => toggleLock(s.id, e)}
+                            className={cn(
+                              'p-1.5 rounded-lg transition-all',
+                              s.isLocked
+                                ? 'text-red-400 bg-red-500/20'
+                                : 'text-gray-500 hover:text-red-400 hover:bg-dark-600'
+                            )}
+                            title={s.isLocked ? '解锁' : '锁定'}
+                            disabled={!s.isLocked && s.isListed}
+                          >
+                            {s.isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
+                      {s.isLocked && (
+                        <p className="text-xs text-red-400 mt-1">🔒 已锁定，无法上架或消耗</p>
+                      )}
                       <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
                         <div className="bg-dark-700/60 rounded p-2">
                           <span className="text-gray-400">时光掌控</span>
@@ -504,9 +583,30 @@ export default function Workshop() {
                   </p>
                 </>
               )}
-              <button onClick={() => setShowResult(false)} className="btn-primary mt-6">
-                确定
-              </button>
+              <div className="flex gap-3 mt-6">
+                {craftResult.success && (
+                  <button
+                    onClick={favoriteNewSandglass}
+                    disabled={craftResult.isFavorite}
+                    className={cn(
+                      'btn-secondary flex-1 flex items-center justify-center gap-2',
+                      craftResult.isFavorite && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    <Star
+                      className="w-4 h-4"
+                      fill={craftResult.isFavorite ? 'currentColor' : 'none'}
+                    />
+                    {craftResult.isFavorite ? '已收藏' : '收藏沙漏'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowResult(false)}
+                  className={cn(craftResult.success ? 'btn-primary flex-1' : 'btn-primary w-full')}
+                >
+                  确定
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

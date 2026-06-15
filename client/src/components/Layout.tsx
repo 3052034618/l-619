@@ -18,8 +18,10 @@ import {
   Coins,
   Gem,
   Star,
+  Gift,
+  TrendingDown,
 } from 'lucide-react';
-import { cn, formatNumber, calculateMasteryLevel } from '../utils';
+import { cn, formatNumber, calculateMasteryLevel, QUALITY_LABELS } from '../utils';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -187,14 +189,71 @@ export default function Layout() {
                         notifications
                           .slice()
                           .reverse()
-                          .map((n) => (
-                            <div key={n.id} className="p-3 hover:bg-dark-600/50">
-                              <p className="text-sm">{n.message}</p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {new Date(n.timestamp).toLocaleTimeString()}
-                              </p>
-                            </div>
-                          ))
+                          .map((n) => {
+                            const isMatchEnd = n.type === 'match_end';
+                            const isPriceAlert = n.type === 'price_alert';
+                            return (
+                              <div key={n.id} className="p-3 hover:bg-dark-600/50">
+                                <p className="text-sm">{n.message}</p>
+                                {isMatchEnd && n.data?.rewards?.fragments?.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-dark-600">
+                                    <div className="flex items-center gap-1 text-xs text-gray-400 mb-2">
+                                      <Gift className="w-3 h-3" /> 获得碎片奖励
+                                    </div>
+                                    <div className="space-y-1">
+                                      {n.data.rewards.fragments.map((f: any, idx: number) => (
+                                        <div key={idx} className="flex items-center justify-between text-xs">
+                                          <span className="text-gray-300">• {f.name}</span>
+                                          <span
+                                            className={cn(
+                                              'font-semibold',
+                                              f.quality === 'rare' && 'text-blue-400',
+                                              f.quality === 'epic' && 'text-purple-400',
+                                              f.quality === 'legendary' && 'text-orange-400',
+                                              f.quality === 'mythical' && 'text-yellow-400'
+                                            )}
+                                          >
+                                            {QUALITY_LABELS[f.quality as keyof typeof QUALITY_LABELS]}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-2">
+                                      积分变化: <span className={cn(n.data?.result === 'win' ? 'text-green-400' : 'text-red-400'}>
+                                        {n.data?.result === 'win' ? '+' : ''}{n.data?.scoreChange || 0}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                                {isPriceAlert && (
+                                  <div className="mt-2 pt-2 border-t border-dark-600">
+                                  <div className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                                    <TrendingDown className="w-3 h-3 text-green-400" /> 价格已低于您的目标价
+                                  </div>
+                                  <div className="text-xs">
+                                    <span className="text-gray-400">卖家: </span>
+                                    <span className="text-white">{n.data?.sellerName || '-'}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs mt-1">
+                                    <span>
+                                      <span className="text-gray-400">当前: </span>
+                                      <span className="text-yellow-400 font-bold">{formatNumber(n.data?.currentPrice || 0)}</span>
+                                      <span className="text-gray-500"> 金币</span>
+                                    </span>
+                                    <span>
+                                      <span className="text-gray-400">目标: </span>
+                                      <span className="text-purple-400 font-bold">{formatNumber(n.data?.targetPrice || 0)}</span>
+                                      <span className="text-gray-500"> 金币</span>
+                                    </span>
+                                  </div>
+                                </div>
+                                )}
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {new Date(n.timestamp).toLocaleTimeString()}
+                                </p>
+                              </div>
+                            );
+                          })
                       )}
                     </div>
                   </motion.div>

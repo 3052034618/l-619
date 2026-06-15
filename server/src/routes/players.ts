@@ -66,7 +66,7 @@ router.get('/me/inventory', authMiddleware, async (req: AuthRequest, res: Respon
 
     const sandglasses = await sandglassRepo.find({
       where: { inventoryId: inventory.id },
-      order: { rarity: 'DESC', createdAt: 'DESC' },
+      order: { isFavorite: 'DESC', rarity: 'DESC', createdAt: 'DESC' },
     });
 
     res.json({
@@ -82,6 +82,43 @@ router.get('/me/inventory', authMiddleware, async (req: AuthRequest, res: Respon
     });
   } catch (error) {
     res.status(500).json({ success: false, error: '获取背包失败' });
+  }
+});
+
+router.post('/me/sandglasses/:id/favorite', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const sandglassRepo = AppDataSource.getRepository(Sandglass);
+    const sandglass = await sandglassRepo.findOne({
+      where: { id: req.params.id, ownerId: req.playerId! },
+    });
+    if (!sandglass) {
+      return res.status(404).json({ success: false, error: '沙漏不存在' });
+    }
+    sandglass.isFavorite = !sandglass.isFavorite;
+    await sandglassRepo.save(sandglass);
+    res.json({ success: true, data: { isFavorite: sandglass.isFavorite } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: '操作失败' });
+  }
+});
+
+router.post('/me/sandglasses/:id/lock', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const sandglassRepo = AppDataSource.getRepository(Sandglass);
+    const sandglass = await sandglassRepo.findOne({
+      where: { id: req.params.id, ownerId: req.playerId! },
+    });
+    if (!sandglass) {
+      return res.status(404).json({ success: false, error: '沙漏不存在' });
+    }
+    if (!sandglass.isLocked && sandglass.isListed) {
+      return res.status(400).json({ success: false, error: '上架中的沙漏不能锁定，请先取消上架' });
+    }
+    sandglass.isLocked = !sandglass.isLocked;
+    await sandglassRepo.save(sandglass);
+    res.json({ success: true, data: { isLocked: sandglass.isLocked } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: '操作失败' });
   }
 });
 

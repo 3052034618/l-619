@@ -87,6 +87,14 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       get().addNotification({ type: 'trade', data, message: data.message });
     });
 
+    socket.on('trade:price_alert', (data) => {
+      get().addNotification({
+        type: 'price_alert',
+        data,
+        message: `💰 ${data.itemName} 价格提醒！当前 ${data.currentPrice} 金币 ≤ 目标 ${data.targetPrice} 金币`,
+      });
+    });
+
     socket.on('chat:message', (data) => {
       get().addNotification({ type: 'chat', data, message: `${data.playerId}: ${data.message}` });
     });
