@@ -9,7 +9,8 @@ import {
   Clock,
   Gauge,
   Star,
-  RefreshCw,
+  Hourglass,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QUALITY_COLORS, QUALITY_LABELS, ERA_LABELS, formatNumber, calculateMasteryLevel, cn } from '../utils';
@@ -25,9 +26,25 @@ interface Fragment {
   isListed: boolean;
 }
 
+interface Sandglass {
+  id: string;
+  name: string;
+  rarity: string;
+  temporalControl: number;
+  specialEffectChance: number;
+  remainingUses: number;
+  maxUses: number;
+  affixes: any[];
+  collectionValue: number;
+  isListed: boolean;
+}
+
 export default function Workshop() {
   const { player, fetchMe } = useAuthStore();
+  const [activeInvTab, setActiveInvTab] = useState<'fragments' | 'sandglasses'>('fragments');
   const [fragments, setFragments] = useState<Fragment[]>([]);
+  const [sandglasses, setSandglasses] = useState<Sandglass[]>([]);
+  const [inventory, setInventory] = useState<{ fragmentCapacity: number; sandglassCapacity: number } | null>(null);
   const [slots, setSlots] = useState<(Fragment | null)[]>([null, null, null, null]);
   const [selectedFragment, setSelectedFragment] = useState<Fragment | null>(null);
   const [isCrafting, setIsCrafting] = useState(false);
@@ -35,23 +52,27 @@ export default function Workshop() {
   const [showResult, setShowResult] = useState(false);
 
   useEffect(() => {
-    loadFragments();
+    loadInventory();
   }, []);
 
-  const loadFragments = async () => {
+  const loadInventory = async () => {
     try {
       const res = await api.get('/players/me/inventory');
       if (res.data?.success) {
         setFragments(res.data.data.fragments || []);
+        setSandglasses(res.data.data.sandglasses || []);
+        setInventory(res.data.data.inventory || null);
       }
     } catch {
       setFragments([]);
+      setSandglasses([]);
     }
   };
 
   const availableFragments = fragments.filter(
     (f) => !f.isListed && !slots.find((s) => s?.id === f.id)
   );
+  const availableSandglasses = sandglasses.filter((s) => !s.isListed);
 
   const addToSlot = (fragment: Fragment, slotIndex?: number) => {
     const targetSlot = slotIndex !== undefined ? slotIndex : slots.findIndex((s) => s === null);
@@ -117,7 +138,7 @@ export default function Workshop() {
         setCraftResult(res.data.data);
         setShowResult(true);
         setSlots([null, null, null, null]);
-        await Promise.all([loadFragments(), fetchMe()]);
+        await Promise.all([loadInventory(), fetchMe()]);
       } else {
         alert(res.data?.error || '合成失败');
       }
@@ -241,33 +262,120 @@ export default function Workshop() {
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-bold mb-4">我的碎片 ({availableFragments.length})</h3>
-            {availableFragments.length === 0 ? (
-              <p className="text-gray-400 text-center py-8">暂无可用碎片，去副本收集吧！</p>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {availableFragments.map((fragment) => (
-                  <motion.div
-                    key={fragment.id}
-                    whileHover={{ scale: 1.05, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => addToSlot(fragment)}
-                    className={cn(
-                      'p-3 rounded-lg cursor-pointer border quality-bg-' + fragment.quality,
-                      'quality-' + fragment.quality
-                    )}
-                  >
-                    <p className="font-semibold text-sm truncate">{fragment.name}</p>
-                    <p className={`text-xs quality-${fragment.quality}`}>{QUALITY_LABELS[fragment.quality]} · {ERA_LABELS[fragment.era]}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-time-400 flex items-center gap-1">
-                        <Gauge className="w-3 h-3" /> {fragment.temporalEnergy}
-                      </span>
-                      <span className="text-xs text-gray-400">槽位 {fragment.slotPosition}</span>
-                    </div>
-                  </motion.div>
-                ))}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setActiveInvTab('fragments')}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
+                    activeInvTab === 'fragments'
+                      ? 'bg-time-600 text-white'
+                      : 'bg-dark-700 text-gray-400 hover:text-white'
+                  )}
+                >
+                  <Layers className="w-4 h-4" />
+                  碎片 ({availableFragments.length}/{inventory?.fragmentCapacity || '-'})
+                </button>
+                <button
+                  onClick={() => setActiveInvTab('sandglasses')}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
+                    activeInvTab === 'sandglasses'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-dark-700 text-gray-400 hover:text-white'
+                  )}
+                >
+                  <Hourglass className="w-4 h-4" />
+                  沙漏 ({availableSandglasses.length}/{inventory?.sandglassCapacity || '-'})
+                </button>
               </div>
+            </div>
+
+            {activeInvTab === 'fragments' ? (
+              availableFragments.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">暂无可用碎片，去副本收集吧！</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {availableFragments.map((fragment) => (
+                    <motion.div
+                      key={fragment.id}
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => addToSlot(fragment)}
+                      className={cn(
+                        'p-3 rounded-lg cursor-pointer border quality-bg-' + fragment.quality,
+                        'quality-' + fragment.quality
+                      )}
+                    >
+                      <p className="font-semibold text-sm truncate">{fragment.name}</p>
+                      <p className={`text-xs quality-${fragment.quality}`}>{QUALITY_LABELS[fragment.quality]} · {ERA_LABELS[fragment.era]}</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-time-400 flex items-center gap-1">
+                          <Gauge className="w-3 h-3" /> {fragment.temporalEnergy}
+                        </span>
+                        <span className="text-xs text-gray-400">槽位 {fragment.slotPosition}</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )
+            ) : (
+              availableSandglasses.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">暂无沙漏，去合成一个吧！</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                  {availableSandglasses.map((s) => (
+                    <motion.div
+                      key={s.id}
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      className={cn(
+                        'p-4 rounded-lg border quality-bg-' + s.rarity,
+                        'quality-' + s.rarity
+                      )}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold truncate" style={{ color: QUALITY_COLORS[s.rarity] }}>
+                            {s.name}
+                          </p>
+                          <p className="text-xs text-gray-400">{QUALITY_LABELS[s.rarity]}</p>
+                        </div>
+                        <Hourglass className="w-5 h-5 flex-shrink-0 ml-2" style={{ color: QUALITY_COLORS[s.rarity] }} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                        <div className="bg-dark-700/60 rounded p-2">
+                          <span className="text-gray-400">时光掌控</span>
+                          <p className="text-time-300 font-bold">{s.temporalControl}</p>
+                        </div>
+                        <div className="bg-dark-700/60 rounded p-2">
+                          <span className="text-gray-400">特殊效果</span>
+                          <p className="text-purple-300 font-bold">{(s.specialEffectChance * 100).toFixed(0)}%</p>
+                        </div>
+                        <div className="bg-dark-700/60 rounded p-2">
+                          <span className="text-gray-400">使用次数</span>
+                          <p className="text-green-400 font-bold">{s.remainingUses}/{s.maxUses}</p>
+                        </div>
+                        <div className="bg-dark-700/60 rounded p-2">
+                          <span className="text-gray-400">收藏价值</span>
+                          <p className="text-yellow-400 font-bold">{formatNumber(s.collectionValue)}</p>
+                        </div>
+                      </div>
+                      {s.affixes?.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {s.affixes.slice(0, 3).map((a: any, i: number) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 bg-time-900/60 text-time-300 rounded text-xs"
+                            >
+                              {a.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         </div>

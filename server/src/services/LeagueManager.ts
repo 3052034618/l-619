@@ -428,7 +428,8 @@ export class LeagueManager {
         await this.sandglassRepo.save(winnerSandglass);
       }
 
-      const rewardFragments = await this.distributeMatchRewards(winnerId, winnerRank.tier);
+      const winnerFragments = await this.distributeMatchRewards(winnerId, winnerRank.tier, 'win');
+      const loserFragments = await this.distributeMatchRewards(loserId, loserRank.tier, 'lose');
 
       await this.achievementService.updateProgress(winnerId, 'LEAGUE_WIN', 1);
 
@@ -436,12 +437,12 @@ export class LeagueManager {
         this.io.to(`player:${winnerId}`).emit('league:match_result', {
           result: 'win',
           scoreChange: winnerChange,
-          rewards: { fragments: rewardFragments },
+          rewards: { fragments: winnerFragments },
         });
         this.io.to(`player:${loserId}`).emit('league:match_result', {
           result: 'lose',
           scoreChange: loserChange,
-          rewards: { fragments: [] },
+          rewards: { fragments: loserFragments },
         });
       }
 
@@ -452,42 +453,70 @@ export class LeagueManager {
     }
   }
 
-  private async distributeMatchRewards(winnerId: string, tier: LeagueTier): Promise<any[]> {
+  private async distributeMatchRewards(winnerId: string, tier: LeagueTier, result: 'win' | 'lose'): Promise<any[]> {
     try {
       const inventory = await this.inventoryRepo.findOne({ where: { playerId: winnerId } });
       if (!inventory) return [];
 
-      const tierRewardMap: Record<string, { count: number; minQuality: FragmentQuality }> = {
-        [LeagueTier.BRONZE]: { count: 1, minQuality: FragmentQuality.COMMON },
-        [LeagueTier.SILVER]: { count: 1, minQuality: FragmentQuality.UNCOMMON },
-        [LeagueTier.GOLD]: { count: 2, minQuality: FragmentQuality.UNCOMMON },
-        [LeagueTier.PLATINUM]: { count: 2, minQuality: FragmentQuality.RARE },
-        [LeagueTier.DIAMOND]: { count: 3, minQuality: FragmentQuality.RARE },
-        [LeagueTier.MASTER]: { count: 3, minQuality: FragmentQuality.EPIC },
-        [LeagueTier.GRANDMASTER]: { count: 4, minQuality: FragmentQuality.EPIC },
+      // 胜利者的奖励：全部段位都至少稀有+
+      const winRewardMap: Record<string, { count: number; minQuality: FragmentQuality }> = {
+        [LeagueTier.BRONZE]: { count: 1, minQuality: FragmentQuality.RARE },
+        [LeagueTier.SILVER]: { count: 2, minQuality: FragmentQuality.RARE },
+        [LeagueTier.GOLD]: { count: 2, minQuality: FragmentQuality.RARE },
+        [LeagueTier.PLATINUM]: { count: 3, minQuality: FragmentQuality.RARE },
+        [LeagueTier.DIAMOND]: { count: 3, minQuality: FragmentQuality.EPIC },
+        [LeagueTier.MASTER]: { count: 4, minQuality: FragmentQuality.EPIC },
+        [LeagueTier.GRANDMASTER]: { count: 5, minQuality: FragmentQuality.EPIC },
       };
 
-      const rewardConfig = tierRewardMap[tier] || tierRewardMap[LeagueTier.BRONZE];
+      const config = result === 'win'
+        ? (winRewardMap[tier] || winRewardMap[LeagueTier.BRONZE])
+        : { count: 1, minQuality: FragmentQuality.RARE }; // 失败者安慰奖：1个稀有
+
       const qualities: FragmentQuality[] = Object.values(FragmentQuality);
       const eras: FragmentEra[] = Object.values(FragmentEra);
-      const minQualityIdx = qualities.indexOf(rewardConfig.minQuality);
+      const minQualityIdx = qualities.indexOf(config.minQuality);
+      const maxQualityIdx = qualities.length - 1;
 
-      const fragmentNames = ['时空残片', '时光碎屑', '命运沙粒', '永恒结晶', '星辰碎片', '虚空精华'];
+      const fragmentNamesByEra: Record<string, string[]> = {
+        ancient: ['远古记忆', '创世残片', '混沌结晶', '神遗之尘'],
+        medieval: ['骑士光辉', '龙息结晶', '圣殿碎片', '王权遗尘'],
+        renaissance: ['艺术瑰宝', '航海罗盘', '炼金结晶', '启蒙之尘'],
+        modern: ['机械齿轮', '电流残片', '蒸汽结晶', '工业之尘'],
+        future: ['量子碎片', '时空锚点', '星舰残片', '虚空结晶'],
+      };
       const rewards: any[] = [];
 
-      for (let i = 0; i < rewardConfig.count; i++) {
-        const qualityIdx = Math.min(
-          qualities.length - 1,
-          minQualityIdx + Math.floor(Math.random() * 2)
-        );
+      for (let i = 0; i < config.count; i++) {
+        // 权重随机：越靠近minQuality概率越高
+        const range = maxQualityIdx - minQualityIdx + 1;
+        const weights = Array.from({ length: range }, (_, idx) => Math.pow(0.5, idx));
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        let rnd = Math.random() * totalWeight;
+        let chosenOffset = 0;
+        for (let w = 0; w < weights.length; w++) {
+          rnd -= weights[w];
+          if (rnd <= 0) { chosenOffset = w; break; }
+        }
+        const qualityIdx = Math.min(maxQualityIdx, minQualityIdx + chosenOffset);
         const quality = qualities[qualityIdx];
         const era = eras[Math.floor(Math.random() * eras.length)];
         const qualityMultiplier: Record<string, number> = { common: 1, uncommon: 2, rare: 4, epic: 8, legendary: 16, mythical: 32 };
+        const eraNames = fragmentNamesByEra[era] || fragmentNamesByEra.ancient;
+        const baseName = eraNames[Math.floor(Math.random() * eraNames.length)];
+        const qualityLabel: Record<string, string> = {
+          common: '普通',
+          uncommon: '优秀',
+          rare: '稀有',
+          epic: '史诗',
+          legendary: '传说',
+          mythical: '神话',
+        };
 
         const fragment = this.fragmentRepo.create({
           id: generateId(),
-          name: `${fragmentNames[Math.floor(Math.random() * fragmentNames.length)]}·${era}`,
-          description: `时光联赛胜利奖励`,
+          name: `${baseName}·${qualityLabel[quality] || ''}`,
+          description: `时光联赛${result === 'win' ? '胜利' : '参与'}奖励`,
           era,
           quality,
           slotPosition: (i % 4) + 1,
@@ -510,6 +539,7 @@ export class LeagueManager {
           quality: saved.quality,
           era: saved.era,
           temporalEnergy: saved.temporalEnergy,
+          qualityLabel: qualityLabel[quality] || '未知',
         });
       }
 

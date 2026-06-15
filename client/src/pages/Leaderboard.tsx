@@ -99,7 +99,7 @@ export default function Leaderboard() {
   );
 
   const top3 = data.slice(0, 3);
-  const rest = data.slice(3);
+  const allList = data || [];
 
   return (
     <ErrorBoundary>
@@ -179,14 +179,35 @@ export default function Leaderboard() {
         )}
 
         <div className="card">
-          <h3 className="text-lg font-bold mb-4">完整排行榜</h3>
-          {rest.length > 0 ? (
-            <div className="space-y-2">
-              {rest.map((item, i) => {
-                const rank = i + 4;
+          <h3 className="text-lg font-bold mb-4">完整排行榜（共 {allList.length} 条）</h3>
+          {allList.length > 0 ? (
+            <div className="space-y-2 max-h-[700px] overflow-y-auto pr-2">
+              {allList.map((item, i) => {
+                const rank = i + 1;
+                const isTop1 = rank === 1;
+                const isTop2 = rank === 2;
+                const isTop3 = rank === 3;
+                const isTop = isTop1 || isTop2 || isTop3;
+
                 const IconComp = icons[activeTab] || Trophy;
                 const displayName = getSafeName(item, nameKeyMap[activeTab]);
                 const displayValue = formatNumber(getSafeValue(item, valueKeyMap[activeTab], 0));
+
+                const rankBadgeClass = isTop1
+                  ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white shadow-lg shadow-yellow-500/40'
+                  : isTop2
+                  ? 'bg-gradient-to-br from-gray-300 to-gray-500 text-white'
+                  : isTop3
+                  ? 'bg-gradient-to-br from-orange-400 to-amber-600 text-white'
+                  : 'bg-dark-600 text-gray-400';
+
+                const rowBgClass = isTop1
+                  ? 'bg-yellow-500/10 border border-yellow-500/30'
+                  : isTop2
+                  ? 'bg-gray-500/10 border border-gray-400/30'
+                  : isTop3
+                  ? 'bg-orange-500/10 border border-orange-500/30'
+                  : 'bg-dark-700/50 hover:bg-dark-700';
 
                 return (
                   <motion.div
@@ -194,17 +215,37 @@ export default function Leaderboard() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: Math.min(i * 0.02, 0.5) }}
-                    className="flex items-center gap-4 p-4 bg-dark-700/50 rounded-xl hover:bg-dark-700 transition-all"
+                    className={cn(
+                      'flex items-center gap-4 p-4 rounded-xl transition-all',
+                      rowBgClass
+                    )}
                   >
-                    <div className="w-10 h-10 rounded-lg bg-dark-600 flex items-center justify-center font-bold text-gray-400">
-                      #{rank}
+                    <div className={cn(
+                      'w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0',
+                      rankBadgeClass
+                    )}>
+                      {isTop1 ? '🥇' : isTop2 ? '🥈' : isTop3 ? '🥉' : `#${rank}`}
                     </div>
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-time-500/30 to-purple-500/30 flex items-center justify-center">
-                      <IconComp className="w-6 h-6 text-time-400" />
+                    <div className={cn(
+                      'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0',
+                      isTop
+                        ? 'bg-gradient-to-br from-time-500/50 to-purple-500/50 ring-2 ring-time-400/30'
+                        : 'bg-gradient-to-br from-time-500/30 to-purple-500/30'
+                    )}>
+                      <IconComp className={cn(
+                        'w-6 h-6',
+                        isTop1 ? 'text-yellow-400' : isTop2 ? 'text-gray-300' : isTop3 ? 'text-orange-400' : 'text-time-400'
+                      )} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate">
+                      <p className={cn(
+                        'font-semibold truncate',
+                        isTop1 && 'text-yellow-300',
+                        isTop2 && 'text-gray-200',
+                        isTop3 && 'text-orange-300'
+                      )}>
                         {displayName}
+                        {isTop1 && <span className="ml-2 text-xs">👑</span>}
                       </p>
                       {activeTab === 'league' && (
                         <p className="text-xs text-gray-400">
@@ -216,9 +257,17 @@ export default function Leaderboard() {
                           Lv.{item.level || 1} · {item.memberCount || 0}成员
                         </p>
                       )}
+                      {activeTab === 'collection' && (
+                        <p className="text-xs text-gray-400">
+                          Lv.{item.level || 1}
+                        </p>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-time-300">
+                    <div className="text-right flex-shrink-0">
+                      <p className={cn(
+                        'text-xl font-bold',
+                        isTop1 ? 'text-yellow-400' : isTop2 ? 'text-gray-200' : isTop3 ? 'text-orange-400' : 'text-time-300'
+                      )}>
                         {displayValue}
                       </p>
                     </div>
@@ -227,7 +276,7 @@ export default function Leaderboard() {
               })}
             </div>
           ) : (
-            <p className="text-gray-400 text-center py-8">暂无更多数据</p>
+            <p className="text-gray-400 text-center py-8">暂无排行榜数据</p>
           )}
         </div>
       </div>
