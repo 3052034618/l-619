@@ -93,6 +93,9 @@ export class LeagueManager {
       if (sandglass.remainingUses <= 0) {
         return { success: false, error: '沙漏使用次数已耗尽', code: 'NO_USES_LEFT' };
       }
+      if (sandglass.isLocked) {
+        return { success: false, error: '该沙漏已被锁定，请先解锁再参赛', code: 'LOCKED' };
+      }
 
       if (this.matchQueue.find(q => q.playerId === playerId)) {
         return { success: false, error: '已在匹配队列中', code: 'ALREADY_IN_QUEUE' };
@@ -543,7 +546,28 @@ export class LeagueManager {
         });
       }
 
-      return rewards;
+      // 按名称+品质合并，附带数量
+      const merged: any[] = [];
+      const seen = new Map<string, { item: any; count: number; ids: string[] }>();
+      rewards.forEach((r) => {
+        const key = `${r.name}__${r.quality}`;
+        if (seen.has(key)) {
+          const existing = seen.get(key)!;
+          existing.count++;
+          existing.ids.push(r.id);
+        } else {
+          seen.set(key, { item: r, count: 1, ids: [r.id] });
+        }
+      });
+      seen.forEach(({ item, count, ids }) => {
+        merged.push({
+          ...item,
+          count,
+          ids,
+        });
+      });
+
+      return merged;
     } catch (error) {
       logger.error('Distribute match rewards error:', error);
       return [];

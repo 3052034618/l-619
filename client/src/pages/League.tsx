@@ -12,6 +12,7 @@ import {
   Timer,
   Users,
   Crown,
+  Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatNumber, cn, QUALITY_COLORS, QUALITY_LABELS } from '../utils';
@@ -25,6 +26,9 @@ interface Sandglass {
   remainingUses: number;
   maxUses: number;
   affixes: any[];
+  isFavorite: boolean;
+  isLocked: boolean;
+  isListed: boolean;
 }
 
 export default function League() {
@@ -56,7 +60,8 @@ export default function League() {
       ]);
       setLeaderboard(rankRes.data?.data?.items || []);
       setMatchHistory(historyRes.data?.data?.items || []);
-      setSandglasses((invRes.data?.data?.sandglasses || []).filter((s: Sandglass) => s.remainingUses > 0 && !s.isListed));
+      const allSgs = invRes.data?.data?.sandglasses || [];
+      setSandglasses(allSgs.filter((s: Sandglass) => s.remainingUses > 0));
     } catch {
       setSandglasses([]);
     }
@@ -265,27 +270,38 @@ export default function League() {
                 </p>
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {sandglasses.map((s) => (
+                  {sandglasses.map((s) => {
+                    const isDisabled = s.remainingUses <= 0 || s.isLocked || s.isListed;
+                    const disabledReason = s.isLocked ? '已锁定' : s.isListed ? '已上架' : s.remainingUses <= 0 ? '次数耗尽' : '';
+                    return (
                     <div
                       key={s.id}
-                      onClick={() => s.remainingUses > 0 && setSelectedSandglass(s.id)}
+                      onClick={() => !isDisabled && setSelectedSandglass(s.id)}
                       className={cn(
-                        'p-4 rounded-lg cursor-pointer transition-all border-2',
+                        'p-4 rounded-lg transition-all border-2',
                         selectedSandglass === s.id
-                          ? 'border-time-500 bg-time-500/10'
-                          : s.remainingUses > 0
-                          ? 'border-transparent bg-dark-700 hover:bg-dark-600'
-                          : 'border-transparent bg-dark-700/50 opacity-50 cursor-not-allowed'
+                          ? 'border-time-500 bg-time-500/10 cursor-pointer'
+                          : isDisabled
+                          ? 'border-transparent bg-dark-700/50 opacity-60 cursor-not-allowed'
+                          : 'border-transparent bg-dark-700 hover:bg-dark-600 cursor-pointer'
                       )}
                     >
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold" style={{ color: QUALITY_COLORS[s.rarity] }}>
                             {s.name}
+                            {s.isFavorite && <span className="ml-1 text-yellow-400">★</span>}
                           </p>
                           <p className="text-xs text-gray-400">
                             {QUALITY_LABELS[s.rarity]} · ⚡ {s.temporalControl}
                           </p>
+                          {isDisabled && (
+                            <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                              {s.isLocked && <Lock className="w-3 h-3" />}
+                              {disabledReason}
+                              {s.isLocked && '，请在工坊解锁'}
+                            </p>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-gray-400">使用次数</p>
@@ -295,7 +311,7 @@ export default function League() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
             </div>

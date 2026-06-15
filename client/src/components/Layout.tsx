@@ -198,15 +198,21 @@ export default function Layout() {
                                 {isMatchEnd && n.data?.rewards?.fragments?.length > 0 && (
                                   <div className="mt-2 pt-2 border-t border-dark-600">
                                     <div className="flex items-center gap-1 text-xs text-gray-400 mb-2">
-                                      <Gift className="w-3 h-3" /> 获得碎片奖励
+                                      <Gift className="w-3 h-3" /> 获得碎片奖励（共 {n.data.rewards.fragments.reduce((sum: number, f: any) => sum + (f.count || 1), 0)} 个）
                                     </div>
                                     <div className="space-y-1">
                                       {n.data.rewards.fragments.map((f: any, idx: number) => (
                                         <div key={idx} className="flex items-center justify-between text-xs">
-                                          <span className="text-gray-300">• {f.name}</span>
+                                          <span className="text-gray-300">
+                                            {f.name}
+                                            {(f.count && f.count > 1) && (
+                                              <span className="text-white font-bold ml-1">×{f.count}</span>
+                                            )}
+                                          </span>
                                           <span
                                             className={cn(
                                               'font-semibold',
+                                              f.quality === 'uncommon' && 'text-green-400',
                                               f.quality === 'rare' && 'text-blue-400',
                                               f.quality === 'epic' && 'text-purple-400',
                                               f.quality === 'legendary' && 'text-orange-400',

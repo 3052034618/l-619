@@ -134,6 +134,10 @@ export class TradeManager {
         await this.sandglassRepo.update(itemId, { isListed: true });
       }
 
+      logger.info(`Trade listed: ${trade.id} by ${sellerId}, price ${price}`);
+      await this.checkPriceAlerts(saved);
+      await this.achievementService.updateProgress(sellerId, 'TRADE_LIST', 1);
+
       return { success: true, data: saved };
     } catch (error) {
       logger.error('List item error:', error);

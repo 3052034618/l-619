@@ -197,32 +197,44 @@ export default function Trade() {
       const params = new URLSearchParams();
       params.set('itemType', trendFilters.itemType);
       params.set('quality', trendFilters.quality);
+      params.set('era', trendFilters.era);
       const res = await api.get(`/trades/price-trend?${params}`);
       const rawData = res.data?.data || [];
       if (Array.isArray(rawData) && rawData.length > 0) {
-        setPriceTrend(rawData);
+        // 填充没有成交数据的日期，加上参考价
+        const qualityIdx = ['common','uncommon','rare','epic','legendary','mythical'].indexOf(trendFilters.quality);
+        const basePrice = (trendFilters.itemType === 'fragment' ? 100 : 1000) * (qualityIdx + 1) * 2;
+        const processed = rawData.map((d) => ({
+          ...d,
+          referencePrice: d.avgPrice === 0 ? (d.referencePrice || basePrice) : undefined,
+        }));
+        setPriceTrend(processed);
       } else {
         const fallback = [];
+        const qualityIdx = ['common','uncommon','rare','epic','legendary','mythical'].indexOf(trendFilters.quality);
+        const basePrice = (trendFilters.itemType === 'fragment' ? 100 : 1000) * (qualityIdx + 1) * 2;
         for (let i = 6; i >= 0; i--) {
           const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-          const basePrice = (trendFilters.itemType === 'fragment' ? 100 : 1000) *
-            (['common','uncommon','rare','epic','legendary','mythical'].indexOf(trendFilters.quality) + 1) * 2;
           fallback.push({
             date: d.toISOString().split('T')[0],
-            avgPrice: basePrice + Math.random() * basePrice * 0.5,
-            volume: Math.floor(Math.random() * 30) + 5,
+            avgPrice: 0,
+            volume: 0,
+            referencePrice: basePrice,
           });
         }
         setPriceTrend(fallback);
       }
     } catch {
       const fallback = [];
+      const qualityIdx = ['common','uncommon','rare','epic','legendary','mythical'].indexOf(trendFilters.quality);
+      const basePrice = (trendFilters.itemType === 'fragment' ? 100 : 1000) * (qualityIdx + 1) * 2;
       for (let i = 6; i >= 0; i--) {
         const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
         fallback.push({
           date: d.toISOString().split('T')[0],
-          avgPrice: 500 + Math.random() * 200,
-          volume: Math.floor(Math.random() * 20) + 2,
+          avgPrice: 0,
+          volume: 0,
+          referencePrice: basePrice,
         });
       }
       setPriceTrend(fallback);
